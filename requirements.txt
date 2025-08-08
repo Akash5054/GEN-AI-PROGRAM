@@ -1,2 +1,5 @@
 dotenv
 langchain-google-genai
+streamlit
+dotenv
+langchain_community
