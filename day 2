@@ -1,1 +1,69 @@
+#setting up the Gemini API key
+import os
+from dotenv import load_dotenv
+load_dotenv()
+os.environ['GOOGLE_API_KEY'] = os.getenv('GOOGLE_API_KEY')
 
+#load document using document loader
+from langchain_community.document_loaders import PyPDFLoader
+loader = PyPDFLoader('../GenAI/AkashResume.pdf')
+docs=loader.load()
+
+#split the documents into chunks
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=0)
+texts = text_splitter.split_documents(docs)
+
+#Embedding Model
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+embedding_model = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+
+#Vector Database
+from langchain_community.vectorstores import FAISS
+vectorDB = FAISS.from_documents(documents=texts, embedding=embedding_model)
+
+#llm
+from langchain_google_genai import ChatGoogleGenerativeAI
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
+
+#Prompt Template
+from langchain.prompts import ChatPromptTemplate
+template = ChatPromptTemplate.from_template(
+    '''You are a personal assistant of K E AKASH, 
+    Think logically and answer the  following question based on the context provided.
+    <context>
+    {context}
+    </context>
+    Question:{input}
+    '''
+)
+
+#Retriever
+retriever = vectorDB.as_retriever()
+
+#create document chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains import create_retrieval_chain
+doc_chain=create_stuff_documents_chain(llm,template)
+
+#Final retrievel chain
+final_chain=create_retrieval_chain(retriever,doc_chain)
+
+#Run query
+res=final_chain.invoke({'input': 'who are you'})
+print(res.get('answer') or res.get('output_text') or res)
+
+#Gradio Frontend Interface
+def main(user_input):
+    res = final_chain.invoke({'input': user_input})
+    return res.get("answer") or res.get("output_text") or str(res)
+
+import gradio as gr
+
+app = gr.Interface(
+    fn = main,
+    inputs=["text"],
+    outputs=["text"],
+    title="AKASH'S PERSONAL ASSISTANT"
+)
+app.launch()
